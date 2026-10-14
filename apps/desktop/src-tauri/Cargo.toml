@@ -1,0 +1,42 @@
+[package]
+name = "voice-app"
+version = "0.1.0"
+description = "Voice dictation + meeting transcriber (working name)"
+edition = "2021"
+rust-version = "1.80"
+
+[lib]
+name = "voice_app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-http = "2"
+tauri-plugin-sql = { version = "2", features = ["sqlite"] }
+tauri-plugin-store = "2"
+tauri-plugin-single-instance = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+log = "0.4"
+
+# audio
+cpal = "0.15"
+hound = "3.5"
+
+# paste into the active app
+arboard = "3"
+enigo = "0.2"
+
+# API keys in Windows Credential Manager / macOS Keychain
+keyring = { version = "3", features = ["windows-native", "apple-native", "sync-secret-service"] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

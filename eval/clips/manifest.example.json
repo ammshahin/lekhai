@@ -1,0 +1,18 @@
+[
+  {
+    "file": "en-meeting-time.m4a",
+    "language": "en",
+    "reference": "um let's meet at five no wait six pm tomorrow",
+    "expectedClean": "Let's meet at 6 pm tomorrow."
+  },
+  {
+    "file": "bn-greeting.m4a",
+    "language": "bn",
+    "reference": "আমি কাল অফিসে আসবো না, বাসা থেকে কাজ করবো"
+  },
+  {
+    "file": "mixed-deadline.m4a",
+    "language": "auto",
+    "reference": "ভাই, deadline টা কি next Monday তে shift করা যাবে?"
+  }
+]
