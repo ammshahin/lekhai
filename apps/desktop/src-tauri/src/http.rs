@@ -25,6 +25,7 @@ const ALLOWED_HOSTS: &[&str] = &[
     "openrouter.ai",
     "api.openai.com",
     "api.together.xyz",
+    "api.elevenlabs.io",
     "localhost",
     "127.0.0.1",
 ];

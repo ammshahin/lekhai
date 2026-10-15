@@ -1,16 +1,16 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
-  GROQ_BASE_URL,
   OpenAiCompatibleLlm,
-  OpenAiCompatibleStt,
+  STT_PROVIDERS,
+  createSttProvider,
   runDictation,
   type DictationResult,
 } from "@voice-app/core";
 import { useEffect, useRef, useState } from "react";
 import { addDictation } from "./history";
 import { httpFetch, warmUp } from "./http";
-import { llmUsesGroqKey, type AppSettings } from "./settings";
+import { llmKeyName, type AppSettings } from "./settings";
 import { playError, playStart, playStop } from "./sounds";
 
 export type Status =
@@ -51,9 +51,11 @@ export function useDictation(settings: AppSettings | undefined, onSaved: () => v
       listen("recording-started", () => {
         setStatus({ kind: "listening" });
         const s = settingsRef.current;
-        if (s?.sounds) playStart();
+        if (!s) return;
+        if (s.sounds) playStart();
         // Connect to the providers while the user speaks, not after they stop.
-        warmUp(s?.cleanup ? [GROQ_BASE_URL, s.llmBaseUrl] : [GROQ_BASE_URL]);
+        const sttUrl = STT_PROVIDERS[s.sttProvider].baseUrl;
+        warmUp(s.cleanup ? [sttUrl, s.llmBaseUrl] : [sttUrl]);
       }),
       listen<FinishedEvent>("recording-finished", (event) => {
         if (settingsRef.current?.sounds) playStop();
@@ -84,15 +86,14 @@ export function useDictation(settings: AppSettings | undefined, onSaved: () => v
     if (!s) return;
     setStatus({ kind: "processing" });
     try {
-      const [groqKey, otherLlmKey, clip] = await Promise.all([
-        invoke<string | null>("get_secret", { name: "groq" }),
-        llmUsesGroqKey(s) ? null : invoke<string | null>("get_secret", { name: "llm" }),
+      const [sttKey, llmKey, clip] = await Promise.all([
+        invoke<string | null>("get_secret", { name: s.sttProvider }),
+        s.cleanup ? invoke<string | null>("get_secret", { name: llmKeyName(s) }) : null,
         invoke<ArrayBuffer>("take_clip"),
       ]);
-      if (!groqKey) throw new Error("Add your Groq API key in Settings first.");
-      const llmKey = llmUsesGroqKey(s) ? groqKey : otherLlmKey;
+      if (!sttKey) throw new Error(`Add your ${STT_PROVIDERS[s.sttProvider].label} API key in Settings first.`);
 
-      const stt = new OpenAiCompatibleStt({ apiKey: groqKey, fetch: httpFetch });
+      const stt = createSttProvider(s.sttProvider, { apiKey: sttKey, model: s.sttModel, fetch: httpFetch });
       const llm =
         s.cleanup && llmKey && s.llmModel
           ? new OpenAiCompatibleLlm({
@@ -133,7 +134,7 @@ export function useDictation(settings: AppSettings | undefined, onSaved: () => v
           language: result.detectedLanguage ?? null,
           raw_text: result.raw,
           clean_text: result.clean,
-          stt_provider: stt.id,
+          stt_provider: `${stt.id}/${stt.model}`,
           llm_model: result.cleanupSkipped ? null : (llm?.model ?? null),
           stt_ms: Math.round(result.timings.sttMs),
           llm_ms: Math.round(result.timings.llmMs),

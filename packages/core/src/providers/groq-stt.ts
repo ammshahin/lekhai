@@ -10,6 +10,7 @@ export interface OpenAiCompatibleSttConfig {
 
 export const GROQ_BASE_URL = "https://api.groq.com/openai/v1";
 export const GROQ_STT_MODEL = "whisper-large-v3-turbo";
+export const OPENAI_BASE_URL = "https://api.openai.com/v1";
 
 /**
  * Speech-to-text over an OpenAI-compatible `/audio/transcriptions` endpoint.
@@ -28,14 +29,19 @@ export class OpenAiCompatibleStt implements SttProvider {
     this.model = config.model ?? GROQ_STT_MODEL;
     this.apiKey = config.apiKey;
     this.fetchFn = config.fetch ?? ((input, init) => fetch(input, init));
-    this.id = this.baseUrl.includes("groq.com") ? "groq" : "openai-compatible";
+    this.id = this.baseUrl.includes("groq.com")
+      ? "groq"
+      : this.baseUrl.includes("api.openai.com")
+        ? "openai"
+        : "openai-compatible";
   }
 
   async transcribe(req: SttRequest): Promise<SttResult> {
     const form = new FormData();
     form.append("file", new Blob([new Uint8Array(req.audio)], { type: req.mimeType }), req.fileName);
     form.append("model", this.model);
-    form.append("response_format", "verbose_json");
+    // OpenAI's gpt-4o-*-transcribe models only accept "json" (no detected language in the reply).
+    form.append("response_format", this.model.startsWith("gpt-") ? "json" : "verbose_json");
     form.append("temperature", "0");
     if (req.language !== "auto") form.append("language", req.language);
     const prompt = buildVocabularyPrompt(req.vocabulary);
@@ -67,8 +73,13 @@ export function buildVocabularyPrompt(vocabulary: string[] | undefined): string 
 export async function describeError(res: Response): Promise<string> {
   let detail = "";
   try {
-    const body = (await res.json()) as { error?: { message?: string } };
-    detail = body.error?.message ?? "";
+    // OpenAI-style `{error: {message}}` or ElevenLabs-style `{detail: {message} | string}`.
+    const body = (await res.json()) as {
+      error?: { message?: string };
+      detail?: string | { message?: string };
+    };
+    detail =
+      body.error?.message ?? (typeof body.detail === "string" ? body.detail : body.detail?.message) ?? "";
   } catch {
     // body was not JSON
   }

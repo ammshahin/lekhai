@@ -3,14 +3,19 @@
  *
  *   GROQ_API_KEY=... pnpm eval
  *   GROQ_API_KEY=... pnpm eval -- --cleanup --model openai/gpt-oss-20b
- *   STT_BASE_URL=... STT_MODEL=... STT_API_KEY=... pnpm eval   # any OpenAI-compatible STT
+ *   STT_PROVIDER=openai STT_API_KEY=sk-... pnpm eval            # groq | openai | elevenlabs
+ *   STT_PROVIDER=elevenlabs STT_MODEL=scribe_v1 STT_API_KEY=... pnpm eval
+ *   STT_BASE_URL=... STT_MODEL=... STT_API_KEY=... pnpm eval   # any other OpenAI-compatible STT
  */
 import {
   OpenAiCompatibleLlm,
   OpenAiCompatibleStt,
+  STT_PROVIDERS,
+  createSttProvider,
   runDictation,
   wordErrorRate,
   type LanguageHint,
+  type SttProviderId,
 } from "@voice-app/core";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { extname, join } from "node:path";
@@ -50,11 +55,13 @@ async function main() {
     throw new Error("Create eval/clips/manifest.json (see manifest.example.json).");
   }
 
-  const stt = new OpenAiCompatibleStt({
-    apiKey,
-    baseUrl: process.env.STT_BASE_URL,
-    model: process.env.STT_MODEL,
-  });
+  const providerId = (process.env.STT_PROVIDER ?? "groq") as SttProviderId;
+  if (!(providerId in STT_PROVIDERS)) {
+    throw new Error(`STT_PROVIDER must be one of: ${Object.keys(STT_PROVIDERS).join(", ")}`);
+  }
+  const stt = process.env.STT_BASE_URL
+    ? new OpenAiCompatibleStt({ apiKey, baseUrl: process.env.STT_BASE_URL, model: process.env.STT_MODEL })
+    : createSttProvider(providerId, { apiKey, model: process.env.STT_MODEL });
   const llm = withCleanup
     ? new OpenAiCompatibleLlm({ apiKey: process.env.GROQ_API_KEY ?? apiKey, model: llmModel })
     : undefined;

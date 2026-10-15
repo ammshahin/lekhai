@@ -3,6 +3,7 @@ import {
   OpenAiCompatibleLlm,
   OpenAiCompatibleStt,
   buildCleanupSystemPrompt,
+  createSttProvider,
   runDictation,
   sanitizeCleanupOutput,
   shouldSkipCleanup,
@@ -165,6 +166,55 @@ describe("providers", () => {
     await expect(
       stt.transcribe({ audio: new Uint8Array(), mimeType: "audio/wav", fileName: "a.wav", language: "auto" }),
     ).rejects.toThrow("Invalid API key");
+  });
+
+  it("OpenAI gpt-4o transcribe uses json response format", async () => {
+    let form: FormData | undefined;
+    let url = "";
+    const fetchFn: FetchLike = async (u, init) => {
+      url = u;
+      form = init?.body as FormData;
+      return new Response(JSON.stringify({ text: "ঢাকা" }), { status: 200 });
+    };
+    const stt = createSttProvider("openai", { apiKey: "k", fetch: fetchFn });
+    const result = await stt.transcribe({ audio: new Uint8Array(), mimeType: "audio/wav", fileName: "a.wav", language: "bn" });
+    expect(result.text).toBe("ঢাকা");
+    expect(stt.id).toBe("openai");
+    expect(url).toBe("https://api.openai.com/v1/audio/transcriptions");
+    expect(form?.get("model")).toBe("gpt-4o-transcribe");
+    expect(form?.get("response_format")).toBe("json");
+  });
+
+  it("ElevenLabs posts model_id, language and keyterms", async () => {
+    let captured: { url: string; init?: RequestInit } | undefined;
+    const fetchFn: FetchLike = async (url, init) => {
+      captured = { url, init };
+      return new Response(JSON.stringify({ text: " আমি ", language_code: "ben" }), { status: 200 });
+    };
+    const stt = createSttProvider("elevenlabs", { apiKey: "xi", model: "", fetch: fetchFn });
+    const result = await stt.transcribe({
+      audio: new Uint8Array([0]),
+      mimeType: "audio/wav",
+      fileName: "a.wav",
+      language: "bn",
+      vocabulary: ["Dhaka", "bKash"],
+    });
+    expect(result).toEqual({ text: "আমি", language: "ben" });
+    expect(captured?.url).toBe("https://api.elevenlabs.io/v1/speech-to-text");
+    const form = captured?.init?.body as FormData;
+    expect(form.get("model_id")).toBe("scribe_v2");
+    expect(form.get("language_code")).toBe("bn");
+    expect(form.getAll("keyterms")).toEqual(["Dhaka", "bKash"]);
+    expect((captured?.init?.headers as Record<string, string>)["xi-api-key"]).toBe("xi");
+  });
+
+  it("ElevenLabs error detail is readable", async () => {
+    const fetchFn: FetchLike = async () =>
+      new Response(JSON.stringify({ detail: { message: "quota exceeded" } }), { status: 402 });
+    const stt = createSttProvider("elevenlabs", { apiKey: "xi", fetch: fetchFn });
+    await expect(
+      stt.transcribe({ audio: new Uint8Array(), mimeType: "audio/wav", fileName: "a.wav", language: "auto" }),
+    ).rejects.toThrow("Request failed (402): quota exceeded");
   });
 
   it("LLM posts chat completion and returns content", async () => {

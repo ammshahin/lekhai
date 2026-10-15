@@ -1,10 +1,25 @@
 import { invoke } from "@tauri-apps/api/core";
+import { STT_PROVIDERS, type SttProviderId } from "@voice-app/core";
 import { useCallback, useEffect, useState } from "react";
 import { useDictation, type Status } from "./dictation";
 import { clearHistory, listDictations, type DictationRow } from "./history";
-import { DEFAULT_SETTINGS, llmUsesGroqKey, loadSettings, saveSettings, type AppSettings } from "./settings";
+import {
+  DEFAULT_SETTINGS,
+  llmKeyName,
+  loadSettings,
+  saveSettings,
+  type AppSettings,
+  type SecretName,
+} from "./settings";
 
 type Tab = "dictate" | "history" | "settings";
+
+const KEY_LABELS: Record<SecretName, string> = {
+  groq: "Groq API key",
+  openai: "OpenAI API key",
+  elevenlabs: "ElevenLabs API key",
+  llm: "API key for this LLM provider",
+};
 
 export function App() {
   const [tab, setTab] = useState<Tab>("dictate");
@@ -34,9 +49,15 @@ export function App() {
         }
       })
       .catch((e) => setLoadError(`Could not load settings: ${e}`));
-    invoke<boolean>("has_secret", { name: "groq" }).then(setHasKey).catch(() => setHasKey(false));
     refreshHistory();
   }, [refreshHistory]);
+
+  const sttProvider = settings?.sttProvider;
+  const checkKey = useCallback(() => {
+    if (!sttProvider) return;
+    invoke<boolean>("has_secret", { name: sttProvider }).then(setHasKey).catch(() => setHasKey(false));
+  }, [sttProvider]);
+  useEffect(checkKey, [checkKey]);
 
   if (loadError) return <div className="app loading error">{loadError}</div>;
   if (!settings) return <div className="app loading">Loading…</div>;
@@ -56,7 +77,7 @@ export function App() {
 
       {hasKey === false && tab !== "settings" && (
         <div className="banner">
-          Add your Groq API key to start. <button onClick={() => setTab("settings")}>Open Settings</button>
+          Add your {STT_PROVIDERS[settings.sttProvider].label} API key to start. <button onClick={() => setTab("settings")}>Open Settings</button>
         </div>
       )}
 
@@ -75,7 +96,7 @@ export function App() {
           <SettingsView
             settings={settings}
             onSaved={(s) => setSettings(s)}
-            onKeyChange={() => invoke<boolean>("has_secret", { name: "groq" }).then(setHasKey)}
+            onKeyChange={checkKey}
           />
         )}
       </main>
@@ -177,10 +198,33 @@ function SettingsView({
 }) {
   const [draft, setDraft] = useState(settings);
   const [vocab, setVocab] = useState(settings.vocabulary.join("\n"));
-  const [groqKey, setGroqKey] = useState("");
-  const [llmKey, setLlmKey] = useState("");
+  // Keys typed in this form (empty = keep the saved one) and which keys are already saved.
+  const [keys, setKeys] = useState<Partial<Record<SecretName, string>>>({});
+  const [savedKeys, setSavedKeys] = useState<Partial<Record<SecretName, boolean>>>({});
   const [message, setMessage] = useState<string>();
   const set = <K extends keyof AppSettings>(k: K, v: AppSettings[K]) => setDraft({ ...draft, [k]: v });
+
+  const refreshSavedKeys = useCallback(() => {
+    const names: SecretName[] = ["groq", "openai", "elevenlabs", "llm"];
+    Promise.all(names.map((name) => invoke<boolean>("has_secret", { name }).catch(() => false))).then((has) =>
+      setSavedKeys(Object.fromEntries(names.map((n, i) => [n, has[i]]))),
+    );
+  }, []);
+  useEffect(refreshSavedKeys, [refreshSavedKeys]);
+
+  const keyField = (name: SecretName, label: string) => (
+    <label>
+      {label} {savedKeys[name] ? <span className="meta">· saved</span> : <span className="meta">· not set</span>}
+      <input
+        type="password"
+        placeholder={savedKeys[name] ? "leave empty to keep the saved key" : "paste your API key"}
+        value={keys[name] ?? ""}
+        onChange={(e) => setKeys({ ...keys, [name]: e.target.value })}
+      />
+    </label>
+  );
+  const sttInfo = STT_PROVIDERS[draft.sttProvider];
+  const llmKey = llmKeyName(draft);
 
   async function save() {
     const next: AppSettings = {
@@ -192,11 +236,12 @@ function SettingsView({
     };
     try {
       await invoke("set_hotkeys", { hold: next.holdHotkey, toggle: next.toggleHotkey });
-      if (groqKey) await invoke("set_secret", { name: "groq", value: groqKey });
-      if (llmKey) await invoke("set_secret", { name: "llm", value: llmKey });
+      for (const [name, value] of Object.entries(keys)) {
+        if (value) await invoke("set_secret", { name, value });
+      }
       await saveSettings(next);
-      setGroqKey("");
-      setLlmKey("");
+      setKeys({});
+      refreshSavedKeys();
       onSaved(next);
       onKeyChange();
       setMessage("Saved.");
@@ -207,19 +252,39 @@ function SettingsView({
 
   return (
     <section className="settings">
-      <h3>API keys</h3>
-      <label>
-        Groq API key (speech-to-text)
-        <input
-          type="password"
-          placeholder="gsk_… (leave empty to keep the saved key)"
-          value={groqKey}
-          onChange={(e) => setGroqKey(e.target.value)}
-        />
-      </label>
-      <p className="hint">Stored in Windows Credential Manager / macOS Keychain, never in files.</p>
-
       <h3>Speech</h3>
+      <label>
+        Speech-to-text provider
+        <select
+          value={draft.sttProvider}
+          onChange={(e) => setDraft({ ...draft, sttProvider: e.target.value as SttProviderId, sttModel: "" })}
+        >
+          {Object.values(STT_PROVIDERS).map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Model
+        <select
+          value={draft.sttModel || sttInfo.models[0]}
+          onChange={(e) => set("sttModel", e.target.value === sttInfo.models[0] ? "" : e.target.value)}
+        >
+          {sttInfo.models.map((m, i) => (
+            <option key={m} value={m}>
+              {m}
+              {i === 0 ? " (default)" : ""}
+            </option>
+          ))}
+        </select>
+      </label>
+      {keyField(draft.sttProvider, KEY_LABELS[draft.sttProvider])}
+      <p className="hint">
+        Get a key at <code>{sttInfo.keyUrl}</code>. Keys are stored in Windows Credential Manager / macOS
+        Keychain, never in files.
+      </p>
       <label>
         Language
         <select value={draft.language} onChange={(e) => set("language", e.target.value as AppSettings["language"])}>
@@ -252,7 +317,12 @@ function SettingsView({
       </label>
       <label>
         LLM base URL (OpenAI-compatible)
-        <input value={draft.llmBaseUrl} onChange={(e) => set("llmBaseUrl", e.target.value)} />
+        <input value={draft.llmBaseUrl} onChange={(e) => set("llmBaseUrl", e.target.value)} list="llm-urls" />
+        <datalist id="llm-urls">
+          <option value="https://api.groq.com/openai/v1">Groq</option>
+          <option value="https://api.openai.com/v1">OpenAI</option>
+          <option value="https://openrouter.ai/api/v1">OpenRouter</option>
+        </datalist>
       </label>
       <label>
         Model
@@ -264,18 +334,14 @@ function SettingsView({
         <datalist id="model-suggestions">
           <option value="openai/gpt-oss-20b" />
           <option value="openai/gpt-oss-120b" />
+          <option value="gpt-4o-mini" />
+          <option value="gpt-4o" />
         </datalist>
       </label>
-      {!llmUsesGroqKey(draft) && (
-        <label>
-          API key for this LLM provider
-          <input
-            type="password"
-            placeholder="leave empty to keep the saved key"
-            value={llmKey}
-            onChange={(e) => setLlmKey(e.target.value)}
-          />
-        </label>
+      {llmKey === draft.sttProvider ? (
+        <p className="hint">Uses the same API key as speech-to-text.</p>
+      ) : (
+        keyField(llmKey, KEY_LABELS[llmKey])
       )}
 
       <h3>Hotkeys</h3>

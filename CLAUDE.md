@@ -15,7 +15,7 @@ Bring-your-own API keys, no backend, no accounts.
 - Monorepo: pnpm workspaces + Turborepo
 - Desktop: Tauri v2 (Rust core) + React + TypeScript + Vite — `apps/desktop`
 - AI logic: `packages/core` (TypeScript, no Tauri imports) — `SttProvider`, `LlmProvider`, pipelines, prompts
-- STT default: Groq `whisper-large-v3-turbo`; LLM: any OpenAI-compatible endpoint (Groq/OpenRouter)
+- STT: choice of Groq Whisper (default), OpenAI `gpt-4o-transcribe`, ElevenLabs Scribe (`STT_PROVIDERS` in core); LLM: any OpenAI-compatible endpoint (Groq/OpenAI/OpenRouter)
 - HTTP from the app goes through the Rust `http_fetch` command (`src-tauri/src/http.rs`: one shared kept-alive client, host allowlist, warmed on recording start); `packages/core` takes an injected `fetch`
 - Local data: SQLite (`tauri-plugin-sql`), settings in `tauri-plugin-store`, API keys in OS keychain (`keyring` crate)
 - Later: Supabase + Hono API (`apps/api`), web dashboard (`apps/web`)

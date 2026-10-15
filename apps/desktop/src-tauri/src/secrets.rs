@@ -5,7 +5,7 @@ use keyring::Entry;
 
 const SERVICE: &str = "voice-app";
 /// Only these names can be read or written from the UI.
-const ALLOWED: &[&str] = &["groq", "llm"];
+const ALLOWED: &[&str] = &["groq", "openai", "elevenlabs", "llm"];
 
 fn entry(name: &str) -> Result<Entry, String> {
     if !ALLOWED.contains(&name) {

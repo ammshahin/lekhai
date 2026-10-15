@@ -1,7 +1,15 @@
-import { GROQ_BASE_URL, type LanguageHint, type OutputScript } from "@voice-app/core";
+import {
+  GROQ_BASE_URL,
+  type LanguageHint,
+  type OutputScript,
+  type SttProviderId,
+} from "@voice-app/core";
 import { load, type Store } from "@tauri-apps/plugin-store";
 
 export interface AppSettings {
+  sttProvider: SttProviderId;
+  /** Empty → the provider's default model. */
+  sttModel: string;
   language: LanguageHint;
   outputScript: OutputScript;
   cleanup: boolean;
@@ -14,6 +22,8 @@ export interface AppSettings {
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
+  sttProvider: "groq",
+  sttModel: "",
   language: "auto",
   outputScript: "as-spoken",
   cleanup: true,
@@ -42,7 +52,12 @@ export async function saveSettings(settings: AppSettings): Promise<void> {
   await (await store()).set(KEY, settings);
 }
 
-/** Groq's key works for both STT and cleanup when the LLM also runs on Groq. */
-export function llmUsesGroqKey(settings: AppSettings): boolean {
-  return settings.llmBaseUrl.includes("api.groq.com");
+/** Keychain entries the UI can set. Provider keys are shared between STT and cleanup. */
+export type SecretName = SttProviderId | "llm";
+
+/** The Groq or OpenAI key is reused when cleanup runs on that provider; anything else uses "llm". */
+export function llmKeyName(settings: AppSettings): SecretName {
+  if (settings.llmBaseUrl.includes("api.groq.com")) return "groq";
+  if (settings.llmBaseUrl.includes("api.openai.com")) return "openai";
+  return "llm";
 }
