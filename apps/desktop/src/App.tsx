@@ -11,6 +11,7 @@ export function App() {
   const [settings, setSettings] = useState<AppSettings>();
   const [history, setHistory] = useState<DictationRow[]>([]);
   const [hasKey, setHasKey] = useState<boolean>();
+  const [loadError, setLoadError] = useState<string>();
 
   const refreshHistory = useCallback(() => {
     listDictations().then(setHistory).catch(console.error);
@@ -19,18 +20,25 @@ export function App() {
   const dictation = useDictation(settings, refreshHistory);
 
   useEffect(() => {
-    loadSettings().then(async (s) => {
-      setSettings(s);
-      try {
-        await invoke("set_hotkeys", { hold: s.holdHotkey, toggle: s.toggleHotkey });
-      } catch (e) {
-        console.warn("hotkeys:", e);
-      }
-    });
+    if (!("__TAURI_INTERNALS__" in window)) {
+      setLoadError("This page only works inside the voice-app window. Run `pnpm dev:desktop` and use the app window, not a browser tab.");
+      return;
+    }
+    loadSettings()
+      .then(async (s) => {
+        setSettings(s);
+        try {
+          await invoke("set_hotkeys", { hold: s.holdHotkey, toggle: s.toggleHotkey });
+        } catch (e) {
+          console.warn("hotkeys:", e);
+        }
+      })
+      .catch((e) => setLoadError(`Could not load settings: ${e}`));
     invoke<boolean>("has_secret", { name: "groq" }).then(setHasKey).catch(() => setHasKey(false));
     refreshHistory();
   }, [refreshHistory]);
 
+  if (loadError) return <div className="app loading error">{loadError}</div>;
   if (!settings) return <div className="app loading">Loading…</div>;
 
   return (
