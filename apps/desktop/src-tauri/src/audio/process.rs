@@ -77,6 +77,15 @@ pub fn analyse(samples: &[f32]) -> ClipStats {
     }
 }
 
+/// Maps RMS to a 0–1 loudness for the recording indicator: -55 dBFS (room noise) → 0,
+/// -10 dBFS (loud speech) → 1, on a log scale like the ear.
+pub fn meter_level(rms: f32) -> f32 {
+    if rms <= 0.0 {
+        return 0.0;
+    }
+    ((20.0 * rms.log10() + 55.0) / 45.0).clamp(0.0, 1.0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -100,6 +109,16 @@ mod tests {
         assert_eq!(&wav[0..4], b"RIFF");
         assert_eq!(&wav[8..12], b"WAVE");
         assert_eq!(wav.len(), 44 + 4 * 2);
+    }
+
+    #[test]
+    fn meter_level_is_clamped_log_scale() {
+        assert_eq!(meter_level(0.0), 0.0);
+        assert_eq!(meter_level(0.0001), 0.0);
+        assert_eq!(meter_level(1.0), 1.0);
+        let quiet = meter_level(0.01);
+        let loud = meter_level(0.1);
+        assert!(0.0 < quiet && quiet < loud && loud < 1.0);
     }
 
     #[test]

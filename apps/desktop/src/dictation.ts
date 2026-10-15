@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
 import {
   OpenAiCompatibleLlm,
   STT_PROVIDERS,
@@ -77,6 +77,7 @@ export function useDictation(settings: AppSettings | undefined, onSaved: () => v
 
   function fail(message: string) {
     setStatus({ kind: "error", message });
+    void emit("dictation-done", { error: message });
     if (settingsRef.current?.sounds) playError();
     void invoke("set_status", { status: `Error: ${message}` });
   }
@@ -153,6 +154,7 @@ export function useDictation(settings: AppSettings | undefined, onSaved: () => v
           : { kind: "idle" },
       );
       void invoke("set_status", { status: "Ready" });
+      void emit("dictation-done", { error: null });
     } catch (err) {
       fail(err instanceof Error ? err.message : String(err));
     }

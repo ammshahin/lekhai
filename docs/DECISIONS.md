@@ -4,6 +4,7 @@ One line per decision. Newest first. Change a decision by adding a new line, not
 
 | Date | Decision | Why |
 | --- | --- | --- |
+| 2026-10-15 | Add a floating recording pill for hotkey dictation (supersedes "no floating pill") | Users had no feedback outside the app; Tauri 2.12 `focusable(false)` + `SW_SHOWNOACTIVATE` + click-through shows it without stealing focus |
 | 2026-10-15 | STT provider is a setting: Groq Whisper, OpenAI GPT-4o Transcribe, ElevenLabs Scribe; one keychain key per provider, reused for cleanup on the same host | Whisper auto-detect mislabels Bangla as Hindi; let users compare on real speech before picking a default |
 | 2026-10-15 | Provider HTTP goes through our own Rust command with one shared `reqwest` client, replacing `tauri-plugin-http` | The plugin builds a client per request, so every STT/LLM call paid DNS+TCP+TLS; we keep connections alive and warm them while the user speaks |
 | 2026-10-15 | No floating "listening" pill in v0.1; start/stop sounds + tray tooltip instead | Showing a window can steal focus from the app we paste into; revisit with a non-activating window |

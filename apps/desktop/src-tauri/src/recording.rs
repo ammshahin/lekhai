@@ -1,7 +1,7 @@
 //! Start/stop logic shared by the hotkeys and the UI buttons. Emits events the UI listens to.
 
 use crate::audio::{analyse, encode_wav, resample_linear, TARGET_SAMPLE_RATE};
-use crate::AppState;
+use crate::{overlay, AppState};
 use serde::Serialize;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager};
@@ -61,7 +61,11 @@ pub fn start(app: &AppHandle, source: Source) {
         if recorder.is_recording() {
             return;
         }
-        recorder.start()
+        // Live input level for the indicator's waveform.
+        let level_app = app.clone();
+        recorder.start(Box::new(move |level| {
+            let _ = level_app.emit_to(overlay::LABEL, "audio-level", level);
+        }))
     };
     match result {
         Ok(()) => {
@@ -69,6 +73,10 @@ pub fn start(app: &AppHandle, source: Source) {
                 *s = source;
             }
             set_tray_tooltip(app, "Listening…");
+            // The app window has its own status; the pill is for dictating into other apps.
+            if source == Source::Hotkey {
+                overlay::show(app);
+            }
             let _ = app.emit("recording-started", Started { source });
         }
         Err(message) => {
@@ -144,6 +152,7 @@ pub fn stop(app: &AppHandle) {
         };
         if payload.skipped.is_some() {
             set_tray_tooltip(&app, "Ready");
+            overlay::hide(&app);
         }
         let _ = app.emit("recording-finished", payload);
     });

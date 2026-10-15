@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>voice-app indicator</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: transparent;
+        overflow: hidden;
+        font: 600 13px/1 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+        user-select: none;
+        cursor: default;
+      }
+      body {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .pill {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        height: 38px;
+        max-width: calc(100% - 8px);
+        box-sizing: border-box;
+        padding: 0 16px 0 14px;
+        border-radius: 19px;
+        background: rgba(20, 20, 23, 0.94);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        color: #fafafa;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+        opacity: 0;
+      }
+      .pill.in {
+        animation: enter 180ms cubic-bezier(0.2, 0.9, 0.3, 1.2) forwards;
+      }
+      .pill.out {
+        animation: leave 160ms ease-in forwards;
+      }
+
+      /* Waveform: heights are driven from overlay.ts every frame. */
+      .bars {
+        flex: none;
+        display: flex;
+        align-items: center;
+        gap: 3px;
+        height: 24px;
+      }
+      .bars i {
+        width: 3px;
+        height: 4px;
+        border-radius: 2px;
+        background: #fafafa;
+        transition: background-color 250ms;
+      }
+      .processing .bars i {
+        background: #a5b4fc;
+      }
+      .done .bars i {
+        background: #4ade80;
+      }
+
+      .label {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-variant-numeric: tabular-nums;
+        color: #a1a1aa;
+      }
+      .processing .label {
+        color: transparent;
+        background: linear-gradient(90deg, #71717a 0%, #71717a 35%, #fafafa 50%, #71717a 65%, #71717a 100%);
+        background-size: 250% 100%;
+        background-clip: text;
+        -webkit-background-clip: text;
+        animation: shimmer 1.6s linear infinite;
+      }
+      .done .label {
+        color: #4ade80;
+      }
+      .error .bars {
+        display: none;
+      }
+      .error .label {
+        color: #fafafa;
+        font-weight: 500;
+      }
+      .error .label::before {
+        content: "⚠  ";
+        color: #fbbf24;
+      }
+
+      @keyframes enter {
+        from {
+          opacity: 0;
+          transform: translateY(6px) scale(0.92);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+      @keyframes leave {
+        from {
+          opacity: 1;
+        }
+        to {
+          opacity: 0;
+          transform: translateY(4px) scale(0.96);
+        }
+      }
+      @keyframes shimmer {
+        from {
+          background-position: 100% 0;
+        }
+        to {
+          background-position: -150% 0;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .pill.in,
+        .pill.out {
+          animation-duration: 1ms;
+        }
+        .processing .label {
+          animation: none;
+          color: #a5b4fc;
+          background: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="pill" id="pill">
+      <div class="bars" id="bars"></div>
+      <span class="label" id="label"></span>
+    </div>
+    <script type="module" src="/src/overlay.ts"></script>
+  </body>
+</html>

@@ -1,6 +1,7 @@
 mod audio;
 mod hotkey;
 mod http;
+mod overlay;
 mod paste;
 mod recording;
 mod secrets;
@@ -164,6 +165,9 @@ pub fn run() {
         })
         .setup(|app| {
             setup_tray(app)?;
+            if let Err(e) = overlay::create(app.handle()) {
+                log::warn!("recording indicator unavailable: {e}");
+            }
             // Defaults; the UI re-applies the user's saved hotkeys on start.
             if let Err(e) =
                 hotkey::apply(app.handle(), hotkey::DEFAULT_HOLD, hotkey::DEFAULT_TOGGLE)
@@ -193,6 +197,7 @@ pub fn run() {
             has_secret,
             http::http_fetch,
             http::http_warm,
+            overlay::hide_overlay,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

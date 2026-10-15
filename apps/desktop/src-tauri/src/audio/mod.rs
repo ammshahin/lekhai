@@ -5,7 +5,7 @@
 
 mod process;
 
-pub use process::{analyse, encode_wav, resample_linear, TARGET_SAMPLE_RATE};
+pub use process::{analyse, encode_wav, meter_level, resample_linear, TARGET_SAMPLE_RATE};
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{SampleFormat, SizedSample};
@@ -16,6 +16,11 @@ use std::time::{Duration, Instant};
 
 /// Hard cap so a stuck hotkey can't fill memory. Meeting mode (v0.2) streams to disk instead.
 const MAX_SECONDS: usize = 5 * 60;
+/// How often the input level is reported while recording (~30 fps for the indicator).
+const LEVEL_INTERVAL: Duration = Duration::from_millis(33);
+
+/// Receives the input loudness (0–1, see `meter_level`) while recording.
+pub type LevelCallback = Box<dyn Fn(f32) + Send>;
 
 /// Mono samples captured from the microphone at the device's native rate.
 pub struct Captured {
@@ -40,7 +45,7 @@ impl Recorder {
     }
 
     /// Opens the default input device and starts capturing. Returns once the stream is running.
-    pub fn start(&mut self) -> Result<(), String> {
+    pub fn start(&mut self, on_level: LevelCallback) -> Result<(), String> {
         if self.active.is_some() {
             return Ok(());
         }
@@ -49,7 +54,7 @@ impl Recorder {
 
         let handle = std::thread::Builder::new()
             .name("audio-capture".into())
-            .spawn(move || capture_thread(stop_rx, ready_tx))
+            .spawn(move || capture_thread(stop_rx, ready_tx, on_level))
             .map_err(|e| format!("Could not start audio thread: {e}"))?;
 
         match ready_rx.recv_timeout(Duration::from_secs(5)) {
@@ -81,6 +86,7 @@ type Setup = (cpal::Stream, Arc<Mutex<Vec<f32>>>, u32);
 fn capture_thread(
     stop_rx: mpsc::Receiver<()>,
     ready_tx: mpsc::Sender<Result<(), String>>,
+    on_level: LevelCallback,
 ) -> Result<Captured, String> {
     let setup = || -> Result<Setup, String> {
         let host = cpal::default_host();
@@ -133,8 +139,17 @@ fn capture_thread(
     };
 
     let started = Instant::now();
-    // Wait for stop (or the Recorder being dropped).
-    let _ = stop_rx.recv();
+    // Until stop (or the Recorder being dropped), report the loudness of the newest audio.
+    let mut reported = 0;
+    while let Err(mpsc::RecvTimeoutError::Timeout) = stop_rx.recv_timeout(LEVEL_INTERVAL) {
+        let rms = {
+            let Ok(buf) = buffer.lock() else { break };
+            let rms = analyse(&buf[reported.min(buf.len())..]).rms;
+            reported = buf.len();
+            rms
+        };
+        on_level(meter_level(rms));
+    }
     drop(stream);
     let duration = started.elapsed();
 

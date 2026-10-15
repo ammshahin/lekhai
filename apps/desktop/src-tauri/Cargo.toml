@@ -36,6 +36,10 @@ enigo = "0.2"
 # API keys in Windows Credential Manager / macOS Keychain
 keyring = { version = "3", features = ["windows-native", "apple-native", "sync-secret-service"] }
 
+# non-activating "Listening…" indicator (must match tauri's `windows` version)
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
+
 [profile.release]
 codegen-units = 1
 lto = true
