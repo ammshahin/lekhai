@@ -1,5 +1,6 @@
 mod audio;
 mod hotkey;
+mod http;
 mod paste;
 mod recording;
 mod secrets;
@@ -77,10 +78,11 @@ fn has_secret(name: String) -> Result<bool, String> {
 // ---------- setup ----------
 
 fn migrations() -> Vec<Migration> {
-    vec![Migration {
-        version: 1,
-        description: "create dictations",
-        sql: "CREATE TABLE IF NOT EXISTS dictations (
+    vec![
+        Migration {
+            version: 1,
+            description: "create dictations",
+            sql: "CREATE TABLE IF NOT EXISTS dictations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 created_at TEXT NOT NULL DEFAULT (datetime('now')),
                 duration_ms INTEGER NOT NULL,
@@ -95,8 +97,17 @@ fn migrations() -> Vec<Migration> {
                 error TEXT
               );
               CREATE INDEX IF NOT EXISTS idx_dictations_created ON dictations(created_at);",
-        kind: MigrationKind::Up,
-    }]
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 2,
+            description: "end-to-end latency columns",
+            sql: "ALTER TABLE dictations ADD COLUMN encode_ms INTEGER;
+              ALTER TABLE dictations ADD COLUMN paste_ms INTEGER;
+              ALTER TABLE dictations ADD COLUMN e2e_ms INTEGER;",
+            kind: MigrationKind::Up,
+        },
+    ]
 }
 
 fn show_main_window(app: &AppHandle) {
@@ -139,7 +150,6 @@ pub fn run() {
                 .with_handler(hotkey::handle)
                 .build(),
         )
-        .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(
             tauri_plugin_sql::Builder::default()
@@ -181,6 +191,8 @@ pub fn run() {
             set_secret,
             get_secret,
             has_secret,
+            http::http_fetch,
+            http::http_warm,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

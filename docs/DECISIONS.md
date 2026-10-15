@@ -4,6 +4,7 @@ One line per decision. Newest first. Change a decision by adding a new line, not
 
 | Date | Decision | Why |
 | --- | --- | --- |
+| 2026-10-15 | Provider HTTP goes through our own Rust command with one shared `reqwest` client, replacing `tauri-plugin-http` | The plugin builds a client per request, so every STT/LLM call paid DNS+TCP+TLS; we keep connections alive and warm them while the user speaks |
 | 2026-10-15 | No floating "listening" pill in v0.1; start/stop sounds + tray tooltip instead | Showing a window can steal focus from the app we paste into; revisit with a non-activating window |
 | 2026-10-15 | Default cleanup model: Groq `openai/gpt-oss-20b` with `reasoning_effort: low` | Fastest cheap model on Groq ($0.075/$0.30 per M tokens); change in Settings |
 | 2026-10-15 | v0.1 encodes 16 kHz mono WAV (not FLAC) | Simpler (`hound`), clips are short; switch to FLAC/Opus for meeting mode |

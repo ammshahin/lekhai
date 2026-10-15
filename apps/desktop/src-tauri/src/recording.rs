@@ -3,6 +3,7 @@
 use crate::audio::{analyse, encode_wav, resample_linear, TARGET_SAMPLE_RATE};
 use crate::AppState;
 use serde::Serialize;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager};
 
 /// Shorter presses are treated as accidental.
@@ -28,6 +29,10 @@ struct Started {
 pub struct Finished {
     pub source: Source,
     pub duration_ms: u128,
+    /// Wall-clock time of the hotkey release (ms since epoch), for end-to-end latency in the UI.
+    pub released_at_ms: u128,
+    /// Time from release until the WAV was ready.
+    pub encode_ms: u128,
     /// `None` when a clip is ready to fetch with `take_clip`; otherwise why it was dropped.
     pub skipped: Option<&'static str>,
 }
@@ -73,6 +78,11 @@ pub fn start(app: &AppHandle, source: Source) {
 }
 
 pub fn stop(app: &AppHandle) {
+    let released = Instant::now();
+    let released_at_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
     let state = app.state::<AppState>();
     let captured = {
         let Ok(mut recorder) = state.recorder.lock() else {
@@ -126,6 +136,8 @@ pub fn stop(app: &AppHandle) {
                 Finished {
                     source,
                     duration_ms,
+                    released_at_ms,
+                    encode_ms: released.elapsed().as_millis(),
                     skipped,
                 }
             }

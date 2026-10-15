@@ -132,7 +132,7 @@ function DictateView({
             </details>
           )}
           <p className="meta">
-            STT {Math.round(last.timings.sttMs)} ms · cleanup {Math.round(last.timings.llmMs)} ms · total{" "}
+            Release → done {last.e2eMs} ms · STT {Math.round(last.timings.sttMs)} ms · cleanup {Math.round(last.timings.llmMs)} ms · total{" "}
             {Math.round(last.timings.totalMs)} ms{last.detectedLanguage ? ` · ${last.detectedLanguage}` : ""}
           </p>
           <button onClick={() => navigator.clipboard.writeText(last.clean)}>Copy</button>
@@ -156,7 +156,7 @@ function HistoryView({ rows, onClear }: { rows: DictationRow[]; onClear: () => v
             <p className="clean">{r.clean_text}</p>
             <p className="meta">
               {new Date(r.created_at + "Z").toLocaleString()} · {(r.duration_ms / 1000).toFixed(1)} s audio ·{" "}
-              {r.total_ms ?? "?"} ms{r.error ? ` · cleanup error: ${r.error}` : ""}
+              {r.e2e_ms ?? r.total_ms ?? "?"} ms{r.error ? ` · cleanup error: ${r.error}` : ""}
             </p>
             <button onClick={() => navigator.clipboard.writeText(r.clean_text)}>Copy</button>
           </li>

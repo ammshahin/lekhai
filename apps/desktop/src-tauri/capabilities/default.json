@@ -7,17 +7,6 @@
     "core:default",
     "store:default",
     "sql:default",
-    "sql:allow-execute",
-    {
-      "identifier": "http:default",
-      "allow": [
-        { "url": "https://api.groq.com/*" },
-        { "url": "https://openrouter.ai/*" },
-        { "url": "https://api.openai.com/*" },
-        { "url": "https://api.together.xyz/*" },
-        { "url": "http://localhost:*/*" },
-        { "url": "http://127.0.0.1:*/*" }
-      ]
-    }
+    "sql:allow-execute"
   ]
 }

@@ -1,15 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import {
+  GROQ_BASE_URL,
   OpenAiCompatibleLlm,
   OpenAiCompatibleStt,
   runDictation,
   type DictationResult,
-  type FetchLike,
 } from "@voice-app/core";
 import { useEffect, useRef, useState } from "react";
 import { addDictation } from "./history";
+import { httpFetch, warmUp } from "./http";
 import { llmUsesGroqKey, type AppSettings } from "./settings";
 import { playError, playStart, playStop } from "./sounds";
 
@@ -22,14 +22,17 @@ export type Status =
 interface FinishedEvent {
   source: "hotkey" | "ui";
   durationMs: number;
+  /** Hotkey release, ms since epoch. */
+  releasedAtMs: number;
+  encodeMs: number;
   skipped: "too-short" | "silent" | null;
 }
 
 export interface LastResult extends DictationResult {
   pasted: boolean;
+  /** Hotkey release → text pasted (or shown, for UI recordings). */
+  e2eMs: number;
 }
-
-const httpFetch: FetchLike = (input, init) => tauriFetch(input, init);
 
 /** Wires Rust recording events to the STT → cleanup → paste pipeline. */
 export function useDictation(settings: AppSettings | undefined, onSaved: () => void) {
@@ -47,7 +50,10 @@ export function useDictation(settings: AppSettings | undefined, onSaved: () => v
     const unlisteners = [
       listen("recording-started", () => {
         setStatus({ kind: "listening" });
-        if (settingsRef.current?.sounds) playStart();
+        const s = settingsRef.current;
+        if (s?.sounds) playStart();
+        // Connect to the providers while the user speaks, not after they stop.
+        warmUp(s?.cleanup ? [GROQ_BASE_URL, s.llmBaseUrl] : [GROQ_BASE_URL]);
       }),
       listen<FinishedEvent>("recording-finished", (event) => {
         if (settingsRef.current?.sounds) playStop();
@@ -78,11 +84,13 @@ export function useDictation(settings: AppSettings | undefined, onSaved: () => v
     if (!s) return;
     setStatus({ kind: "processing" });
     try {
-      const groqKey = await invoke<string | null>("get_secret", { name: "groq" });
+      const [groqKey, otherLlmKey, clip] = await Promise.all([
+        invoke<string | null>("get_secret", { name: "groq" }),
+        llmUsesGroqKey(s) ? null : invoke<string | null>("get_secret", { name: "llm" }),
+        invoke<ArrayBuffer>("take_clip"),
+      ]);
       if (!groqKey) throw new Error("Add your Groq API key in Settings first.");
-      const llmKey = llmUsesGroqKey(s)
-        ? groqKey
-        : await invoke<string | null>("get_secret", { name: "llm" });
+      const llmKey = llmUsesGroqKey(s) ? groqKey : otherLlmKey;
 
       const stt = new OpenAiCompatibleStt({ apiKey: groqKey, fetch: httpFetch });
       const llm =
@@ -95,7 +103,6 @@ export function useDictation(settings: AppSettings | undefined, onSaved: () => v
             })
           : undefined;
 
-      const clip = await invoke<ArrayBuffer>("take_clip");
       const result = await runDictation({
         audio: new Uint8Array(clip),
         stt,
@@ -109,11 +116,15 @@ export function useDictation(settings: AppSettings | undefined, onSaved: () => v
       });
 
       const shouldPaste = finished.source === "hotkey" && result.clean.length > 0;
+      const pasteStart = performance.now();
       if (shouldPaste) await invoke("paste_text", { text: result.clean });
+      const pasteMs = Math.round(performance.now() - pasteStart);
+      const e2eMs = Date.now() - finished.releasedAtMs;
 
-      setLast({ ...result, pasted: shouldPaste });
+      setLast({ ...result, pasted: shouldPaste, e2eMs });
       console.info(
-        `[dictation] stt ${Math.round(result.timings.sttMs)}ms, llm ${Math.round(result.timings.llmMs)}ms, total ${Math.round(result.timings.totalMs)}ms`,
+        `[dictation] e2e ${e2eMs}ms = encode ${finished.encodeMs}ms, stt ${Math.round(result.timings.sttMs)}ms, ` +
+          `llm ${Math.round(result.timings.llmMs)}ms, paste ${pasteMs}ms (rest: IPC + keychain)`,
       );
 
       if (result.raw) {
@@ -127,6 +138,9 @@ export function useDictation(settings: AppSettings | undefined, onSaved: () => v
           stt_ms: Math.round(result.timings.sttMs),
           llm_ms: Math.round(result.timings.llmMs),
           total_ms: Math.round(result.timings.totalMs),
+          encode_ms: finished.encodeMs,
+          paste_ms: shouldPaste ? pasteMs : null,
+          e2e_ms: e2eMs,
           error: result.cleanupError ?? null,
         });
         onSavedRef.current();

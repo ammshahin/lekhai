@@ -20,10 +20,13 @@ pub fn paste_text(text: &str) -> Result<(), String> {
 
     send_paste_shortcut()?;
 
-    // Let the target app read the clipboard before restoring the old contents.
-    sleep(Duration::from_millis(200));
+    // Let the target app read the clipboard before restoring the old contents. Done in the
+    // background so the caller isn't held up after the text is already in place.
     if let Some(prev) = previous {
-        let _ = clipboard.set_text(prev);
+        std::thread::spawn(move || {
+            sleep(Duration::from_millis(200));
+            let _ = clipboard.set_text(prev);
+        });
     }
     Ok(())
 }
